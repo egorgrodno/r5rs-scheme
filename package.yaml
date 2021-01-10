@@ -1,0 +1,48 @@
+name:                r5rs-scheme
+version:             0.1.0.0
+github:              "egorgrodno/r5rs-scheme"
+license:             BSD3
+author:              "Egor Zhyh"
+maintainer:          "egor990095@gmail.com"
+copyright:           "2021 Egor Zhyh"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+# Metadata used when publishing your package
+# synopsis:            Short description of your package
+# category:            Web
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/egorgrodno/r5rs-scheme#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+
+library:
+  source-dirs: src
+
+executables:
+  r5rs-scheme-exe:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - r5rs-scheme
+
+tests:
+  r5rs-scheme-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - r5rs-scheme
