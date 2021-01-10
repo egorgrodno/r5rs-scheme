@@ -1,7 +1,9 @@
 {-# LANGUAGE LambdaCase #-}
 
 module Parser
-  ( between
+  ( Parser
+  , (.:.)
+  , between
   , betweenCharTok
   , betweenSepByComma
   , charTok
