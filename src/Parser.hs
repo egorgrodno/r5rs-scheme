@@ -1,7 +1,8 @@
 {-# LANGUAGE LambdaCase #-}
 
 module Parser
-  ( Parser
+  ( Parser(..)
+  , ParseResult(..)
   , (.:.)
   , between
   , betweenCharTok
