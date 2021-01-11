@@ -16,9 +16,13 @@ module Parser
   , letter
   , list
   , list1
+  , maybeCharacter
+  , noCaseString
   , noneOf
   , oneOf
   , parse
+  , returnParser
+  , returnParserWithInput
   , satisfy
   , satisfyAll
   , satisfyAny
@@ -31,7 +35,7 @@ module Parser
   , stringTok
   , tok
   , unexpectedCharParser
-  , valueParser
+  , unexpectedStringParser
   ) where
 
 import           Control.Applicative            ( Alternative
@@ -47,7 +51,9 @@ import           Control.Monad                  ( MonadPlus
 import           Data.Char                      ( isDigit
                                                 , isLetter
                                                 , isSpace
+                                                , toLower
                                                 )
+import           Data.Function                  ( on )
 
 
 type Input =
@@ -68,7 +74,7 @@ instance Show a => Show (ParseResult a) where
   show (ExpectedEof i) =
     "Expected end of stream, but got >" ++ show i ++ "<"
   show (UnexpectedChar c) =
-    "Unexpected character: " ++ show [c]
+    "Unexpected character: '" ++ [c] ++ "'"
   show (UnexpectedString s) =
     "Unexpected string: " ++ show s
   show UnknownError =
@@ -123,9 +129,17 @@ unexpectedCharParser :: Char -> Parser a
 unexpectedCharParser =
   constantParser . UnexpectedChar
 
-valueParser :: a -> Parser a
-valueParser a =
+unexpectedStringParser :: String -> Parser a
+unexpectedStringParser =
+  constantParser . UnexpectedString
+
+returnParser :: a -> Parser a
+returnParser a =
   P (`Result` a)
+
+returnParserWithInput :: (Input -> Input) -> a -> Parser a
+returnParserWithInput f a =
+  P (\i -> Result (f i) a)
 
 instance Semigroup a => Semigroup (Parser a) where
   (<>) =
@@ -147,7 +161,7 @@ instance Functor Parser where
 
 instance Applicative Parser where
   pure =
-    valueParser
+    returnParser
   k <*> p =
     parserBind k (<$> p)
   p1 *> p2 =
@@ -158,6 +172,8 @@ instance Applicative Parser where
 instance Monad Parser where
   (>>=) =
     parserBind
+  return =
+    returnParser
 
 parserBind :: Parser a -> (a -> Parser b) -> Parser b
 parserBind (P p) g =
@@ -198,14 +214,21 @@ character :: Parser Char
 character =
   P (\case
       (c : cs) -> Result cs c
-      []       -> UnexpectedEof
+      ""       -> UnexpectedEof
+    )
+
+maybeCharacter :: Parser (Maybe Char)
+maybeCharacter =
+  P (\case
+      (c : cs) -> Result cs (Just c)
+      ""       -> Result "" Nothing
     )
 
 satisfy :: (Char -> Bool) -> Parser Char
 satisfy p =
   character
     >>= (\c -> if p c
-          then valueParser c
+          then returnParser c
           else unexpectedCharParser c
         )
 
@@ -243,7 +266,7 @@ noneOf cs =
 
 list :: Parser a -> Parser [a]
 list p =
-  list1 p <|> valueParser []
+  list1 p <|> returnParser []
 
 list1 :: Parser a -> Parser [a]
 list1 p =
@@ -269,6 +292,10 @@ string :: String -> Parser String
 string =
   traverse is
 
+noCaseString :: String -> Parser String
+noCaseString =
+  traverse (satisfy . on (==) toLower)
+
 stringTok :: String -> Parser String
 stringTok =
   tok . string
@@ -287,7 +314,7 @@ sepBy1 p s =
 
 sepBy :: Parser a -> Parser s -> Parser [a]
 sepBy p s =
-  sepBy1 p s <|> valueParser []
+  sepBy1 p s <|> returnParser []
 
 betweenSepByComma :: Char -> Char -> Parser a -> Parser [a]
 betweenSepByComma l r p =
