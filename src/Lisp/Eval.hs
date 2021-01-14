@@ -1,12 +1,15 @@
+{-# LANGUAGE LambdaCase #-}
+
 module Lisp.Eval
   ( eval
   ) where
 
+import           Control.Monad.Except           ( throwError )
 import           Lisp.Prim                      ( LispNumber(..)
                                                 , LispVal(..)
+                                                , mod''
                                                 , showListVals
                                                 )
-import           Control.Monad.Except
 
 
 type LispFunction =
@@ -16,7 +19,7 @@ type ThrowsException =
   Either LispException
 
 data LispException =
-  InvalidArgs Integer [LispVal]
+  InvalidArgs NArgs [LispVal]
   | TypeMismatch String LispVal
   | NotAFunction String
   | CannotEval LispVal
@@ -24,15 +27,29 @@ data LispException =
 instance Show LispException where
   show = showException
 
+data NArgs =
+  Exactly Int
+  | AtLeast Int
+
+instance Show NArgs where
+  show = showNArgs
+
 showException :: LispException -> String
 showException (InvalidArgs n got) =
-  "Expected " ++ show n ++ " args, got " ++ showListVals got
+  let msg = "Wrong number of args given, expected " ++ show n ++ ", got "
+   in case got of
+        [] -> msg ++ "0"
+        _  -> msg ++ show (length got) ++ " (" ++ showListVals got ++ ")"
 showException (TypeMismatch t got) =
-  "Expected " ++ t ++ " type, got " ++ show got
+  "Wrong type, expected " ++ t ++ ", got " ++ show got
 showException (NotAFunction name) =
-  "Unknown function " ++ name
+  "Function " ++ name ++ " not recognized"
 showException (CannotEval expr) =
   "Cannot eval " ++ show expr
+
+showNArgs :: NArgs -> String
+showNArgs (Exactly n) = show n
+showNArgs (AtLeast n) = "at least " ++ show n
 
 eval :: LispVal -> ThrowsException LispVal
 eval n@(Number    _                  ) = return n
@@ -49,21 +66,40 @@ apply name args =
 
 functions :: [(String, LispFunction)]
 functions =
-  [ ("+", foldl2Nums (+))
-  , ("-", foldl2Nums (-))
-  , ("*", foldl2Nums (*))
-  , ("/", foldl2Nums (/))
+  [ ("+"        , makeFunc (+)   unpackNum   (AtLeast 2) Number)
+  , ("-"        , makeFunc (-)   unpackNum   (AtLeast 2) Number)
+  , ("*"        , makeFunc (*)   unpackNum   (AtLeast 2) Number)
+  , ("/"        , makeFunc (/)   unpackNum   (AtLeast 2) Number)
+  , ("mod"      , makeFunc mod'' unpackNum   (Exactly 2) Number)
+  , ("quotient" , makeFunc quot  unpackExact (Exactly 2) (Number . Exact))
+  , ("remainder", makeFunc rem   unpackExact (Exactly 2) (Number . Exact))
   ]
 
-foldl2Nums ::
-  (LispNumber -> LispNumber -> LispNumber)
+satisfies :: NArgs -> Int -> Bool
+satisfies (Exactly n) nArgs = nArgs == n
+satisfies (AtLeast n) nArgs = nArgs >= n
+
+makeFunc ::
+  (a -> a -> a)
+  -> (LispVal -> ThrowsException a)
+  -> NArgs
+  -> (a -> LispVal)
   -> [LispVal]
   -> ThrowsException LispVal
-foldl2Nums _ []   = throwError $ InvalidArgs 2 []
-foldl2Nums _ [v]  = throwError $ InvalidArgs 2 [v]
-foldl2Nums f args = Number . foldl1 f <$> traverse unpackNum args
+makeFunc f unpack n tc args =
+  if satisfies n (length args)
+    then tc . foldl1 f <$> traverse unpack args
+    else throwError $ InvalidArgs n args
 
 unpackNum :: LispVal -> ThrowsException LispNumber
 unpackNum (Number n  ) = return n
 unpackNum (List   [n]) = unpackNum n
 unpackNum val          = throwError $ TypeMismatch "number" val
+
+unpackExact :: LispVal -> ThrowsException Integer
+unpackExact val =
+  unpackNum val
+    >>= (\case
+          Exact e       -> return e
+          i@(Inexact _) -> throwError $ TypeMismatch "exact number" (Number i)
+        )

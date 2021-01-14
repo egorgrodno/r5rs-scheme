@@ -1,8 +1,11 @@
 module Lisp.Prim
   ( LispNumber(..)
   , LispVal(..)
+  , mod''
   , showListVals
   ) where
+
+import           Data.Fixed                     ( mod' )
 
 
 data LispVal =
@@ -87,6 +90,9 @@ showCharacter =
 showListVals :: [LispVal] -> String
 showListVals =
   unwords . map showVal
+
+mod'' :: LispNumber -> LispNumber -> LispNumber
+mod'' = lispNumberBinaryOp mod mod'
 
 -- ---------------------------------------------------------------------------
 -- Utils
