@@ -24,15 +24,21 @@ data LispNumber =
   Exact Integer
   | Inexact Double
 
+instance Eq LispNumber where
+  (==) = liftBinaryOp (==) (==)
+
 instance Show LispNumber where
   show = showLispNumber
 
+instance Ord LispNumber where
+  compare = liftBinaryOp compare compare
+
 instance Num LispNumber where
-  (+)         = lispNumberBinaryOp (+) (+)
-  (-)         = lispNumberBinaryOp (-) (-)
-  (*)         = lispNumberBinaryOp (*) (*)
-  abs         = lispNumberUnaryOp abs abs
-  signum      = lispNumberUnaryOp signum signum
+  (+)         = liftNumBinaryOp (+) (+)
+  (-)         = liftNumBinaryOp (-) (-)
+  (*)         = liftNumBinaryOp (*) (*)
+  abs         = liftNumUnaryOp abs abs
+  signum      = liftNumUnaryOp signum signum
   fromInteger = Exact
 
 instance Fractional LispNumber where
@@ -51,25 +57,32 @@ showLispNumber (Inexact a) = case break (== '.') (show a) of
   (h, ".0") -> h ++ "."
   (h, t)    -> h ++ t
 
-lispNumberUnaryOp ::
+liftNumUnaryOp ::
   (Integer -> Integer)
   -> (Double -> Double)
   -> (LispNumber -> LispNumber)
-lispNumberUnaryOp f1 f2 n =
-  case n of
-    Exact   n' -> Exact $ f1 n'
-    Inexact n' -> Inexact $ f2 n'
+liftNumUnaryOp f1 f2 n = case n of
+  Exact   n' -> Exact $ f1 n'
+  Inexact n' -> Inexact $ f2 n'
 
-lispNumberBinaryOp ::
+liftBinaryOp ::
+  (Integer -> Integer -> a)
+  -> (Double -> Double -> a)
+  -> (LispNumber -> LispNumber -> a)
+liftBinaryOp f1 f2 n1 n2 = case (n1, n2) of
+  (Exact   n1', Exact n2'  ) -> f1 n1' n2'
+  (Inexact n1', Inexact n2') -> f2 n1' n2'
+  (Exact   n1', Inexact n2') -> f2 (fromInteger n1') n2'
+  (Inexact n1', Exact n2'  ) -> f2 n1' (fromInteger n2')
+
+liftNumBinaryOp ::
   (Integer -> Integer -> Integer)
   -> (Double -> Double -> Double)
-  -> (LispNumber -> LispNumber -> LispNumber)
-lispNumberBinaryOp f1 f2 n1 n2 =
-  case (n1, n2) of
-    (Exact   n1', Exact n2'  ) -> Exact $ f1 n1' n2'
-    (Inexact n1', Inexact n2') -> Inexact $ f2 n1' n2'
-    (Exact   n1', Inexact n2') -> Inexact $ f2 (fromInteger n1') n2'
-    (Inexact n1', Exact n2'  ) -> Inexact $ f2 n1' (fromInteger n2')
+  -> LispNumber
+  -> LispNumber
+  -> LispNumber
+liftNumBinaryOp f1 f2 =
+  liftBinaryOp (\a b -> Exact $ f1 a b) (\a b -> Inexact $ f2 a b)
 
 showVal :: LispVal -> String
 showVal (Atom      a    ) = a
@@ -92,7 +105,7 @@ showListVals =
   unwords . map showVal
 
 mod'' :: LispNumber -> LispNumber -> LispNumber
-mod'' = lispNumberBinaryOp mod mod'
+mod'' = liftNumBinaryOp mod mod'
 
 -- ---------------------------------------------------------------------------
 -- Utils

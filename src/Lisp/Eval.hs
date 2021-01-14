@@ -4,6 +4,7 @@ module Lisp.Eval
   ( eval
   ) where
 
+import           Control.Applicative            ( liftA2 )
 import           Control.Monad.Except           ( throwError )
 import           Lisp.Prim                      ( LispNumber(..)
                                                 , LispVal(..)
@@ -66,35 +67,61 @@ apply name args =
 
 functions :: [(String, LispFunction)]
 functions =
-  [ ("+"        , makeFunc (+)   unpackNum   (AtLeast 2) Number)
-  , ("-"        , makeFunc (-)   unpackNum   (AtLeast 2) Number)
-  , ("*"        , makeFunc (*)   unpackNum   (AtLeast 2) Number)
-  , ("/"        , makeFunc (/)   unpackNum   (AtLeast 2) Number)
-  , ("mod"      , makeFunc mod'' unpackNum   (Exactly 2) Number)
-  , ("quotient" , makeFunc quot  unpackExact (Exactly 2) (Number . Exact))
-  , ("remainder", makeFunc rem   unpackExact (Exactly 2) (Number . Exact))
+  [ ("and"      , foldOp (&&)  unpackBool  Bool)
+  , ("or"       , foldOp (||)  unpackBool  Bool)
+  , ("+"        , foldOp (+)   unpackNum   Number)
+  , ("-"        , foldOp (-)   unpackNum   Number)
+  , ("*"        , foldOp (*)   unpackNum   Number)
+  , ("/"        , foldOp (/)   unpackNum   Number)
+  , ("modulo"   , binOp  mod'' unpackNum   Number)
+  , ("quotient" , binOp  quot  unpackExact (Number . Exact))
+  , ("remainder", binOp  rem   unpackExact (Number . Exact))
+  , ("="        , binOp  (==)  unpackNum   Bool)
+  , ("<"        , binOp  (<)   unpackNum   Bool)
+  , (">"        , binOp  (>)   unpackNum   Bool)
+  , (">="       , binOp  (>=)  unpackNum   Bool)
+  , ("<="       , binOp  (<=)  unpackNum   Bool)
+  , ("string=?" , binOp  (==)  unpackStr   Bool)
+  , ("string<?" , binOp  (<)   unpackStr   Bool)
+  , ("string>?" , binOp  (>)   unpackStr   Bool)
+  , ("string<=?", binOp  (<=)  unpackStr   Bool)
+  , ("string>=?", binOp  (>=)  unpackStr   Bool)
   ]
 
-satisfies :: NArgs -> Int -> Bool
-satisfies (Exactly n) nArgs = nArgs == n
-satisfies (AtLeast n) nArgs = nArgs >= n
+unOp ::
+  (a -> b)
+  -> (LispVal -> ThrowsException a)
+  -> (b -> LispVal)
+  -> [LispVal]
+  -> ThrowsException LispVal
+unOp f unpack tc args = case args of
+  [x] -> tc . f <$> unpack x
+  _   -> throwError $ InvalidArgs (Exactly 1) args
 
-makeFunc ::
+binOp ::
+  (a -> a -> b)
+  -> (LispVal -> ThrowsException a)
+  -> (b -> LispVal)
+  -> [LispVal]
+  -> ThrowsException LispVal
+binOp f unpack tc args = case args of
+  [x, y] -> tc <$> liftA2 f (unpack x) (unpack y)
+  _      -> throwError $ InvalidArgs (Exactly 2) args
+
+foldOp ::
   (a -> a -> a)
   -> (LispVal -> ThrowsException a)
-  -> NArgs
   -> (a -> LispVal)
   -> [LispVal]
   -> ThrowsException LispVal
-makeFunc f unpack n tc args =
-  if satisfies n (length args)
+foldOp f unpack tc args =
+  if length args >= 2
     then tc . foldl1 f <$> traverse unpack args
-    else throwError $ InvalidArgs n args
+    else throwError $ InvalidArgs (AtLeast 2) args
 
 unpackNum :: LispVal -> ThrowsException LispNumber
-unpackNum (Number n  ) = return n
-unpackNum (List   [n]) = unpackNum n
-unpackNum val          = throwError $ TypeMismatch "number" val
+unpackNum (Number n) = return n
+unpackNum val        = throwError $ TypeMismatch "number" val
 
 unpackExact :: LispVal -> ThrowsException Integer
 unpackExact val =
@@ -103,3 +130,11 @@ unpackExact val =
           Exact e       -> return e
           i@(Inexact _) -> throwError $ TypeMismatch "exact number" (Number i)
         )
+
+unpackStr :: LispVal -> ThrowsException String
+unpackStr (String s) = return s
+unpackStr val        = throwError $ TypeMismatch "string" val
+
+unpackBool :: LispVal -> ThrowsException Bool
+unpackBool (Bool b) = return b
+unpackBool val      = throwError $ TypeMismatch "boolean" val
