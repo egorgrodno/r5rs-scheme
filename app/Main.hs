@@ -4,14 +4,16 @@ module Main
   ( main
   ) where
 
-import           Data.Bifunctor                 ( bimap )
-import           Lisp                           ( eval
-                                                , lispExpr
+import           Control.Monad.Except           ( runExceptT
+                                                , throwError
                                                 )
-import           Parser                         ( Parser
-                                                , ParseResult(..)
-                                                , eof
-                                                , parse
+import           Control.Monad.IO.Class         ( liftIO )
+import           Lisp                           ( eval'
+                                                , lispExpr
+                                                , nullScope
+                                                )
+import           Parser                         ( eof
+                                                , parse'
                                                 , spaces
                                                 )
 import           System.Environment             ( getArgs )
@@ -19,32 +21,32 @@ import           System.Exit                    ( ExitCode(..)
                                                 , exitSuccess
                                                 , exitWith
                                                 )
-
+import           Except                         ( AppException(..)
+                                                , IOThrows
+                                                )
 
 main :: IO ()
 main =
-  parseArgs <$> getArgs
+  let parseAndEvalLisp str = do
+        scopeRef <- liftIO nullScope
+        (_, val) <- parse' (lispExpr <* spaces <* eof) str
+        eval' scopeRef val
+   in do
+        result <- runExceptT (parseArgs >>= parseAndEvalLisp)
+        case result of
+          Left  (InvalidCliArgs  str) -> putStrLn str >> usage >> die
+          Left  (ParseException  err) -> print err >> die
+          Left  (LispException   err) -> print err >> die
+          Right val                   -> print val >> exitSuccess
+
+parseArgs :: IOThrows AppException String
+parseArgs =
+  liftIO getArgs
     >>= (\case
-          Left err ->
-            putStrLn ("Error parsing arguments: " ++ err) >> usage >> die
-          Right str -> case parseAndEval str of
-            Left  err    -> putStrLn err >> die
-            Right result -> putStrLn result >> exitSuccess
+          [a] -> return a
+          [ ] -> throwError $ InvalidCliArgs "Not enough arguments"
+          _   -> throwError $ InvalidCliArgs "Too many arguments"
         )
-
-parseAndEval :: String -> Either String String
-parseAndEval str =
-  parseToEither (lispExpr <* spaces <* eof) str >>= bimap show show . eval
-
-parseToEither :: Show a => Parser a -> String -> Either String a
-parseToEither p i = case parse p i of
-  Result _ expr -> Right expr
-  err           -> Left $ show err
-
-parseArgs :: [String] -> Either String String
-parseArgs (_ : _ : _) = Left "too many arguments"
-parseArgs [a        ] = Right a
-parseArgs []          = Left "not enough arguments"
 
 usage :: IO ()
 usage = putStrLn "Usage: r5rs-scheme STRING"

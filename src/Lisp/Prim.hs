@@ -7,7 +7,6 @@ module Lisp.Prim
 
 import           Data.Fixed                     ( mod' )
 
-
 data LispVal =
   Atom String
   | Number LispNumber
@@ -16,6 +15,7 @@ data LispVal =
   | Bool Bool
   | List [LispVal]
   | Pair [LispVal] LispVal
+  deriving Eq
 
 instance Show LispVal where
   show = showVal
@@ -108,7 +108,7 @@ mod'' :: LispNumber -> LispNumber -> LispNumber
 mod'' = liftNumBinaryOp mod mod'
 
 -- ---------------------------------------------------------------------------
--- Utils
+-- Util
 
 dropStartIf :: Eq a => a -> [a] -> [a]
 dropStartIf a str@(h : t) =

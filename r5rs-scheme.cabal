@@ -25,11 +25,18 @@ source-repository head
 
 library
   exposed-modules:
+      Except
       Lisp
       Lisp.Eval
+      Lisp.Except
       Lisp.Parser
       Lisp.Prim
+      Lisp.Scope
       Parser
+      Parser.Char
+      Parser.Combinator
+      Parser.Except
+      Parser.Prim
   other-modules:
       Paths_r5rs_scheme
   hs-source-dirs:

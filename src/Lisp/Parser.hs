@@ -9,6 +9,7 @@ module Lisp.Parser
 import           Control.Applicative            ( (<|>)
                                                 , liftA2
                                                 )
+import           Data.Bifunctor                 ( second )
 import           Data.Char                      ( digitToInt
                                                 , isDigit
                                                 , isHexDigit
@@ -45,7 +46,7 @@ lispExpr =
     <|> lispNumber
     <|> lispAtom
     <|> lispQuoted
-    <|> between (charTok '(') (spaces *> is ')') (lispPair <|> lispList)
+    <|> between (char '(' <* spaces) (spaces *> char ')') (lispPair <|> lispList)
 
 characterNames :: [(String, Char)]
 characterNames =
@@ -107,24 +108,24 @@ lispCharacter :: Parser LispVal
 lispCharacter =
   let namedCharacter =
         P (\i -> case i of
-            "" -> UnexpectedEof
+            "" -> Left UnexpectedEof
             str -> case lookupCharacterName str of
-              Nothing -> UnexpectedString i
-              Just (a, rest) -> Result rest a
+              Nothing -> Left $ UnexpectedString i
+              Just (a, rest) -> Right (rest, a)
           )
-   in Character <$> (string "#\\" *> (namedCharacter <|> character))
+   in Character <$> (string "#\\" *> (namedCharacter <|> anyChar))
 
 lispString :: Parser LispVal
 lispString =
-  let char =
-        character
+  let escapedChar =
+        anyChar
           >>= (\c1 -> if c1 == '\\'
                 then oneOf "\"nrt\\"
                 else if c1 == '"'
                   then unexpectedCharParser c1
                   else return c1
               )
-   in String <$> between (is '"') (is '"') (list char)
+   in String <$> between (char '"') (char '"') (list escapedChar)
 
 numberPrefix :: Parser (NumberSystem, Maybe Bool)
 numberPrefix =
@@ -159,8 +160,8 @@ numberParserFromPrefix (system, exact) =
           (Just True)  -> Exact <$> parseSigned (parserFromReadS readDec)
           (Just False) -> Inexact <$> parseSigned (parserFromReadS readFloat)
           Nothing      -> P (\i -> if isFloat i
-                              then Inexact <$> parse (parseSigned (parserFromReadS readFloat)) i
-                              else Exact <$> parse (parseSigned (parserFromReadS readDec)) i
+                              then second Inexact <$> parse (parseSigned $ parserFromReadS readFloat) i
+                              else second Exact <$> parse (parseSigned $ parserFromReadS readDec) i
                             )
 
 lispNumber :: Parser LispVal
@@ -186,15 +187,15 @@ lispList =
 lispPair :: Parser LispVal
 lispPair = do
   head <- sepBy1 lispExpr spaces1
-  tail <- spaces1 *> is '.' *> spaces1 *> lispExpr
+  tail <- spaces1 *> char '.' *> spaces1 *> lispExpr
   return $ Pair head tail
 
 lispQuoted :: Parser LispVal
 lispQuoted =
-  (\x -> List [Atom "quote", x]) <$> (is '\'' *>  lispExpr)
+  (\x -> List [Atom "quote", x]) <$> (char '\'' *>  lispExpr)
 
 -- ---------------------------------------------------------------------------
--- Utils
+-- Util
 
 isFloat :: String -> Bool
 isFloat "" = False
@@ -214,7 +215,7 @@ digitToInteger =
 
 parseBinary' :: Integer -> Parser Integer
 parseBinary' acc =
-  maybeCharacter
+  (Just <$> anyChar <|> returnParser Nothing)
     >>= (\case
           Nothing -> return acc
           Just c  -> if
@@ -226,22 +227,18 @@ parseBinary' acc =
 {- HLINT ignore parseBinary "Redundant multi-way if" -}
 parseBinary :: Parser Integer
 parseBinary =
-  character
-    >>= (\c -> if
-          | isBinary c -> parseBinary' $ digitToInteger c
-          | otherwise  -> unexpectedCharParser c
-        )
+  satisfy isBinary >>= parseBinary' . digitToInteger
 
 parseSigned :: Num a => Parser a -> Parser a
 parseSigned (P p) =
   P (\case
-      ('-' : i) -> negate <$> p i
+      ('-' : i) -> second negate <$> p i
       i         -> p i
     )
 
 parserFromReadS :: ReadS a -> Parser a
 parserFromReadS f =
   P (\i -> case f i of
-      ((a, t) : _) -> Result t a
-      _            -> UnexpectedString i
+      ((a, t) : _) -> Right (t, a)
+      _            -> Left $ UnexpectedString i
     )

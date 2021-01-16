@@ -6,60 +6,27 @@ module Lisp.Eval
 
 import           Control.Applicative            ( liftA2 )
 import           Control.Monad.Except           ( throwError )
-import           Lisp.Prim                      ( LispNumber(..)
-                                                , LispVal(..)
-                                                , mod''
-                                                , showListVals
-                                                )
-
+import           Data.Bool                      ( bool )
+import           Data.IORef                     ( IORef )
+import           Lisp.Except
+import           Lisp.Prim
+import           Lisp.Scope
 
 type LispFunction =
   [LispVal] -> ThrowsException LispVal
 
-type ThrowsException =
-  Either LispException
-
-data LispException =
-  InvalidArgs NArgs [LispVal]
-  | TypeMismatch String LispVal
-  | NotAFunction String
-  | CannotEval LispVal
-
-instance Show LispException where
-  show = showException
-
-data NArgs =
-  Exactly Int
-  | AtLeast Int
-
-instance Show NArgs where
-  show = showNArgs
-
-showException :: LispException -> String
-showException (InvalidArgs n got) =
-  let msg = "Wrong number of args given, expected " ++ show n ++ ", got "
-   in case got of
-        [] -> msg ++ "0"
-        _  -> msg ++ show (length got) ++ " (" ++ showListVals got ++ ")"
-showException (TypeMismatch t got) =
-  "Wrong type, expected " ++ t ++ ", got " ++ show got
-showException (NotAFunction name) =
-  "Function " ++ name ++ " not recognized"
-showException (CannotEval expr) =
-  "Cannot eval " ++ show expr
-
-showNArgs :: NArgs -> String
-showNArgs (Exactly n) = show n
-showNArgs (AtLeast n) = "at least " ++ show n
-
-eval :: LispVal -> ThrowsException LispVal
-eval n@(Number    _                  ) = return n
-eval c@(Character _                  ) = return c
-eval s@(String    _                  ) = return s
-eval b@(Bool      _                  ) = return b
-eval (  List      [Atom "quote", val]) = return val
-eval (  List      (Atom fname : args)) = traverse eval args >>= apply fname
-eval val                               = throwError $ CannotEval val
+eval :: IORef Scope -> LispVal -> IOThrowsException LispVal
+eval _   n@(Number    _                              ) = return n
+eval _   c@(Character _                              ) = return c
+eval _   s@(String    _                              ) = return s
+eval _   b@(Bool      _                              ) = return b
+eval ref (  Atom      id                             ) = getVar ref id
+eval _   (  List      [Atom "quote", val]            ) = return val
+eval ref (  List      [Atom "if", p, onTrue, onFalse]) = eval ref p >>= (eval ref . bool onTrue onFalse . (== Bool False))
+eval ref (  List      [Atom "set!", Atom name, val]  ) = eval ref val >>= setVar ref name
+eval ref (  List      [Atom "define", Atom name, val]) = eval ref val >>= defineVar ref name
+eval ref (  List      (Atom fname : args)            ) = traverse (eval ref) args >>= (liftThrow . apply fname)
+eval _   val                                           = throwError $ CannotEval val
 
 apply :: String -> [LispVal] -> ThrowsException LispVal
 apply name args =
