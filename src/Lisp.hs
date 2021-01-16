@@ -1,5 +1,7 @@
 module Lisp
-  ( eval
+  ( LispVal(..)
+  , Scope
+  , eval
   , eval'
   , lispExpr
   , nullScope
