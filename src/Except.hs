@@ -3,7 +3,7 @@ module Except where
 import           Control.Monad.Except           ( ExceptT
                                                 , throwError
                                                 )
-import           Lisp.Except                    ( LispException )
+import           Lisp.Types                     ( LispException )
 import           Parser.Except                  ( ParseException )
 
 data AppException =

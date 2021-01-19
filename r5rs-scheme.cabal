@@ -28,21 +28,22 @@ library
       Except
       Lisp
       Lisp.Eval
-      Lisp.Except
       Lisp.Parser
-      Lisp.Prim
       Lisp.Scope
+      Lisp.Types
       Parser
       Parser.Char
       Parser.Combinator
       Parser.Except
       Parser.Prim
+      Util
   other-modules:
       Paths_r5rs_scheme
   hs-source-dirs:
       src
   build-depends:
       base >=4.7 && <5
+    , containers
     , mtl
   default-language: Haskell2010
 
@@ -55,6 +56,7 @@ executable r5rs-scheme-exe
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
+    , containers
     , mtl
     , r5rs-scheme
   default-language: Haskell2010
@@ -69,6 +71,7 @@ test-suite r5rs-scheme-test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
+    , containers
     , mtl
     , r5rs-scheme
   default-language: Haskell2010

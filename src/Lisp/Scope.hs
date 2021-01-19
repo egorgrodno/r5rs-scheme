@@ -11,11 +11,7 @@ import           Data.IORef                     ( IORef
                                                 , writeIORef
                                                 )
 import           Data.Maybe                     ( isJust )
-import           Lisp.Except
-import           Lisp.Prim
-
-type Scope =
-  [(String, IORef LispVal)]
+import           Lisp.Types
 
 nullScope :: IO (IORef Scope)
 nullScope = newIORef []
@@ -59,4 +55,3 @@ makeClosure ref bindings =
         scope <- readIORef ref
         newScope <- traverse makeBinding bindings
         newIORef (newScope ++ scope)
-

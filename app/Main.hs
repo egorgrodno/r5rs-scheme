@@ -16,13 +16,14 @@ import           Except                         ( AppException(..)
                                                 )
 import           Lisp                           ( LispVal
                                                 , Scope
+                                                , baseScope
                                                 , eval'
                                                 , lispExpr
-                                                , nullScope
                                                 )
 import           Parser                         ( eof
                                                 , parse'
-                                                , spaces
+                                                , sepBy1
+                                                , spaces1
                                                 )
 import           System.Environment             ( getArgs )
 import           System.Exit                    ( ExitCode(..)
@@ -31,6 +32,10 @@ import           System.Exit                    ( ExitCode(..)
                                                 )
 import           System.IO                      ( hFlush
                                                 , stdout
+                                                )
+import           System.IO.Error                ( catchIOError
+                                                , ioError
+                                                , isEOFError
                                                 )
 import qualified Paths_r5rs_scheme             as P
 
@@ -55,7 +60,7 @@ main = do
       result <- runExceptT $ runScript script
       case result of
         Left err  -> print err >> die
-        Right val -> print val >> exitSuccess
+        Right val -> putStr (showResults val) >> exitSuccess
 
 parseArgs :: IOThrows String Action
 parseArgs =
@@ -71,28 +76,44 @@ parseArgs =
           _                  -> throwError "Bad arguments"
         )
 
-runScript :: String -> IOThrows AppException LispVal
+runScript :: String -> IOThrows AppException [LispVal]
 runScript str = do
-  scopeRef <- liftIO nullScope
+  scopeRef <- liftIO baseScope
   parseAndEval scopeRef str
 
 startRepl :: IO ()
 startRepl =
   let loop ref = do
-        input <- prompt
-        unless (input == "quit") (evalAndPrint ref input >> loop ref)
-   in nullScope >>= loop
+        maybeInput <- prompt
+        case maybeInput of
+          Nothing    -> exitSuccess
+          Just input -> unless (input == "quit") (evalAndPrint ref input >> loop ref)
+   in baseScope >>= loop
 
 evalAndPrint :: IORef Scope -> String -> IO ()
-evalAndPrint ref str =
-  either show show <$> runExceptT (parseAndEval ref str) >>= putStrLn
+evalAndPrint ref str = do
+  result <- runExceptT (parseAndEval ref str)
+  case result of
+    Left err   -> print err
+    Right vals -> putStr $ showResults vals
 
-parseAndEval :: IORef Scope -> String -> IOThrows AppException LispVal
+parseAndEval :: IORef Scope -> String -> IOThrows AppException [LispVal]
 parseAndEval ref str =
-  parse' (lispExpr <* spaces <* eof) str >>= (eval' ref . snd)
+  parse' (sepBy1 lispExpr spaces1 <* eof) str
+    >>= (traverse (eval' ref) . snd)
 
-prompt :: IO String
-prompt = putStr "lisp>>> " >> hFlush stdout >> getLine
+showResults :: [LispVal] -> String
+showResults = unlines . map show
+
+prompt :: IO (Maybe String)
+prompt = putStr "lisp>>> " >> hFlush stdout >> catchEOF Nothing Just getLine
+
+catchEOF :: b -> (a -> b) -> IO a -> IO b
+catchEOF b f action =
+  catchIOError (f <$> action) (\e -> if isEOFError e
+                                then return b
+                                else ioError e
+                              )
 
 version :: IO ()
 version = putStrLn $ "r5rs-scheme v" ++ showVersion P.version

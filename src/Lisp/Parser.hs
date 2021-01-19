@@ -4,6 +4,7 @@
 
 module Lisp.Parser
   ( lispExpr
+  , lispIdentifier
   ) where
 
 import           Control.Applicative            ( (<|>)
@@ -11,6 +12,8 @@ import           Control.Applicative            ( (<|>)
                                                 )
 import           Data.Bifunctor                 ( second )
 import           Data.Char                      ( digitToInt
+                                                , isAlpha
+                                                , isAlphaNum
                                                 , isDigit
                                                 , isHexDigit
                                                 , isOctDigit
@@ -26,11 +29,8 @@ import           Numeric                        ( readDec
                                                 , readHex
                                                 , readOct
                                                 )
-import           Lisp.Prim                      ( LispNumber(..)
-                                                , LispVal(..)
-                                                )
+import           Lisp.Types
 import           Parser
-
 
 data NumberSystem =
   Binary
@@ -41,12 +41,14 @@ data NumberSystem =
 
 lispExpr :: Parser LispVal
 lispExpr =
-  lispCharacter
-    <|> lispString
-    <|> lispNumber
-    <|> lispAtom
-    <|> lispQuoted
-    <|> between (char '(' <* spaces) (spaces *> char ')') (lispPair <|> lispList)
+  let leftParenth = char '(' <* spaces
+      rightParenth = spaces *> char ')'
+   in lispCharacter
+        <|> lispString
+        <|> lispNumber
+        <|> lispAtom
+        <|> lispQuoted
+        <|> between leftParenth rightParenth (lispPair <|> lispList)
 
 characterNames :: [(String, Char)]
 characterNames =
@@ -177,7 +179,7 @@ lispAtom =
   (\case
     "#t" -> Bool True
     "#f" -> Bool False
-    atom -> Atom atom
+    atom -> Atom $ maybe (Left atom) Right (lookup atom keywords)
   ) <$> (letter <|> symbol) .:. list (letter <|> digit <|> symbol)
 
 lispList :: Parser LispVal
@@ -192,7 +194,14 @@ lispPair = do
 
 lispQuoted :: Parser LispVal
 lispQuoted =
-  (\x -> List [Atom "quote", x]) <$> (char '\'' *>  lispExpr)
+  (\x -> List [Atom (Right KQuote), x]) <$> (char '\'' *>  lispExpr)
+
+lispIdentifier :: Parser String
+lispIdentifier =
+  let h       = satisfyAny [isAlpha,    (`elem`          symbols)]
+      t       = satisfyAny [isAlphaNum, (`elem` "+-." ++ symbols)]
+      symbols = "*/<=>!?:$%_&~^"
+   in h .:. list t
 
 -- ---------------------------------------------------------------------------
 -- Util
