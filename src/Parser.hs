@@ -8,13 +8,13 @@ module Parser
   , spaces1
   ) where
 
-import           Control.Monad.Except           ( throwError )
 import           Data.Bifunctor                 ( first )
 import           Except
 import           Parser.Char
 import           Parser.Combinator
 import           Parser.Except
 import           Parser.Prim
+import           Prelude
 
 parse' :: Parser a -> Input -> IOThrows AppException (Input, a)
 parse' p = liftThrow . first ParseException . parse p

@@ -1,6 +1,7 @@
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE MultiWayIf #-}
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE LambdaCase         #-}
+{-# LANGUAGE MultiWayIf         #-}
+{-# LANGUAGE TupleSections      #-}
+{-# LANGUAGE DerivingStrategies #-}
 
 module Lisp.Parser
   ( lispExpr
@@ -15,13 +16,9 @@ import           Data.Char                      ( digitToInt
                                                 , isAlpha
                                                 , isAlphaNum
                                                 , isDigit
-                                                , isHexDigit
-                                                , isOctDigit
-                                                , isSpace
                                                 , toLower
                                                 )
 import           Data.List                      ( find
-                                                , foldl'
                                                 , isPrefixOf
                                                 )
 import           Numeric                        ( readDec
@@ -31,13 +28,17 @@ import           Numeric                        ( readDec
                                                 )
 import           Lisp.Types
 import           Parser
+import           Prelude                 hiding ( head
+                                                , tail
+                                                )
+
 
 data NumberSystem =
   Binary
   | Octal
   | Decimal
   | Hexadecimal
-  deriving Show
+  deriving stock Show
 
 lispExpr :: Parser LispVal
 lispExpr =

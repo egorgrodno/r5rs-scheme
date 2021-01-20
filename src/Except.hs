@@ -1,10 +1,16 @@
-module Except where
+module Except
+  ( AppException(..)
+  , IOThrows
+  , Throws
+  , liftThrow
+  ) where
 
 import           Control.Monad.Except           ( ExceptT
                                                 , throwError
                                                 )
 import           Lisp.Types                     ( LispException )
 import           Parser.Except                  ( ParseException )
+import           Prelude
 
 data AppException =
   ParseException ParseException

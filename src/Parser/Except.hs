@@ -2,6 +2,8 @@ module Parser.Except
   ( ParseException(..)
   ) where
 
+import           Prelude
+
 data ParseException =
   UnexpectedEof
   | ExpectedEof String

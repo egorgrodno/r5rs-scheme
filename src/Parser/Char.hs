@@ -1,6 +1,20 @@
-{-# LANGUAGE LambdaCase    #-}
+{-# LANGUAGE LambdaCase #-}
 
-module Parser.Char where
+module Parser.Char
+  ( anyChar
+  , char
+  , digit
+  , eof
+  , letter
+  , noCaseString
+  , noneOf
+  , oneOf
+  , satisfy
+  , satisfyAll
+  , satisfyAny
+  , space
+  , string
+  ) where
 
 import           Data.Char                      ( isDigit
                                                 , isLetter
@@ -9,6 +23,7 @@ import           Data.Char                      ( isDigit
                                                 )
 import           Data.Function                  ( on )
 import           Parser.Prim
+import           Prelude
 
 eof :: Parser ()
 eof =

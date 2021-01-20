@@ -1,6 +1,13 @@
 {-# LANGUAGE TupleSections #-}
 
-module Lisp.Scope where
+module Lisp.Scope
+  ( defineVar
+  , getVar
+  , isDefined
+  , makeClosure
+  , nullScope
+  , setVar
+  ) where
 
 import           Control.Monad.Except           ( liftIO
                                                 , throwError
@@ -12,6 +19,7 @@ import           Data.IORef                     ( IORef
                                                 )
 import           Data.Maybe                     ( isJust )
 import           Lisp.Types
+import           Prelude
 
 nullScope :: IO (IORef Scope)
 nullScope = newIORef []

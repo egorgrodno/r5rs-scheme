@@ -1,9 +1,17 @@
-module Parser.Combinator where
+module Parser.Combinator
+  ( (.:.)
+  , between
+  , list
+  , list1
+  , sepBy
+  , sepBy1
+  ) where
 
 import           Control.Applicative            ( (<|>)
                                                 , liftA2
                                                 )
 import           Parser.Prim
+import           Prelude
 
 (.:.) :: Parser a -> Parser [a] -> Parser [a]
 (.:.) = liftA2 (:)

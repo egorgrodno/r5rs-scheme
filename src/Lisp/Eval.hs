@@ -1,4 +1,5 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE LambdaCase    #-}
+{-# LANGUAGE TupleSections #-}
 
 module Lisp.Eval
   ( eval
@@ -6,12 +7,8 @@ module Lisp.Eval
   ) where
 
 import           Control.Applicative            ( liftA2 )
-import           Control.Monad                  ( liftM
-                                                , liftM2
-                                                )
 import           Control.Monad.Except           ( liftIO
                                                 , throwError
-                                                , runExceptT
                                                 )
 import           Data.Bool                      ( bool )
 import           Data.Either                    ( isLeft )
@@ -19,9 +16,19 @@ import           Data.IORef                     ( IORef )
 import qualified Data.List.NonEmpty            as NE
 import           Lisp.Parser
 import           Lisp.Scope
-import           Lisp.Types
+import           Lisp.Types              hiding ( body
+                                                , closure
+                                                , params
+                                                )
 import           Parser
+import           Prelude                 hiding ( init )
 import           Util
+
+type Unpacker a =
+  LispVal -> ThrowsException a
+
+type IOUnpacker a =
+  LispVal -> IOThrowsException a
 
 primProcs :: [(Keyword, PrimProc)]
 primProcs =
@@ -46,7 +53,6 @@ primProcs =
   , (KStrGTE, binOp  (>=)  unpackStr   Bool)
   ]
 
-
 -- ---------------------------------------------------------------------------
 -- Evaluation
 
@@ -64,7 +70,8 @@ eval ref (  List (h : args)  ) = case h of
   Atom (Right KSet   ) -> setExpr ref args
   Atom (Right KDefine) -> defineExpr ref args
   Atom (Right KLambda) -> lambdaExpr ref args
-  _             -> do
+  Atom (Right KLet)    -> letExpr ref args
+  _                    -> do
     func    <- eval ref h
     argVals <- mapM (eval ref) args
     apply func argVals
@@ -100,26 +107,47 @@ getLocalScope (params, arity) args =
 -- Expressions
 
 quoteExpr :: IORef Scope -> [LispVal] -> IOThrowsException LispVal
-quoteExpr ref [val] = return $ flatten val
+quoteExpr _   [val] = return $ flatten val
 quoteExpr _   args  = throwError $ InvalidArgs (Exactly 1) args
 
 ifStatement :: IORef Scope -> [LispVal] -> IOThrowsException LispVal
 ifStatement ref [p, onT, onF] =
   eval ref p >>= (eval ref . bool onT onF . isFalse)
-ifStatement _   args          = throwError $ InvalidArgs (Exactly 3) args
+ifStatement _ args = throwError $ InvalidArgs (Exactly 3) args
+
+letExpr :: IORef Scope -> [LispVal] -> IOThrowsException LispVal
+letExpr ref (bindings : body) = case NE.nonEmpty body of
+  Nothing    -> throwError EmptyBody
+  Just body' -> do
+    bs        <- liftThrow (unpackList unpackBinding bindings)
+                   >>= traverse (secondM $ eval ref)
+    ensureUnique $ fst <$> bs
+    closure   <- liftIO $ makeClosure ref bs
+    NE.last <$> traverse (eval closure) body'
+letExpr _ args  = throwError $ InvalidArgs (Exactly 2) args
+
+unpackBinding :: LispVal -> ThrowsException (String, LispVal)
+unpackBinding (List [ident, init]) = unpackId ident >>= (return . (, init))
+unpackBinding val                  = throwError $ TypeMismatch "binding" val
+
+unpackList :: Unpacker a -> Unpacker [a]
+unpackList g p@(Pair _ (List _  )) = unpackList g $ flatten p
+unpackList g p@(Pair _ (Pair _ _)) = unpackList g $ flatten p
+unpackList g (List vals)           = traverse g vals
+unpackList _ val                   = throwError $ TypeMismatch "list" val
 
 setExpr :: IORef Scope -> [LispVal] -> IOThrowsException LispVal
 setExpr ref [ident, val] =
-  bind2 (setVar ref) (unpackId ident) (eval ref val)
-setExpr _   args  = throwError $ InvalidArgs (Exactly 2) args
+  bind2 (setVar ref) (liftThrow $ unpackId ident) (eval ref val)
+setExpr _ args = throwError $ InvalidArgs (Exactly 2) args
 
 defineExpr :: IORef Scope -> [LispVal] -> IOThrowsException LispVal
 defineExpr ref [i@(Atom _), val] =
-  bind2 (defineVar ref) (unpackId i) (eval ref val)
+  bind2 (defineVar ref) (ioUnpackId i) (eval ref val)
 defineExpr ref (List (i : params) : body) =
-  bind2 (defineVar ref) (unpackId i) (makeProc ref (params, Nothing) body)
+  bind2 (defineVar ref) (ioUnpackId i) (makeProc ref (params, Nothing) body)
 defineExpr ref (Pair (i : params) arity : body) =
-  bind2 (defineVar ref) (unpackId i) (makeProc ref (params, Just arity) body)
+  bind2 (defineVar ref) (ioUnpackId i) (makeProc ref (params, Just arity) body)
 defineExpr _ args =
   throwError $ BadExpression $ List $ Atom (Right KDefine) : args
 
@@ -136,11 +164,11 @@ lambdaExpr _ args =
 -- ---------------------------------------------------------------------------
 -- Unpackers
 
-unpackNum :: LispVal -> ThrowsException LispNumber
+unpackNum :: Unpacker LispNumber
 unpackNum (Number n) = return n
 unpackNum val        = throwError $ TypeMismatch "number" val
 
-unpackExact :: LispVal -> ThrowsException Integer
+unpackExact :: Unpacker Integer
 unpackExact val =
   unpackNum val
     >>= (\case
@@ -148,38 +176,33 @@ unpackExact val =
           i@(Inexact _) -> throwError $ TypeMismatch "exact number" (Number i)
         )
 
-unpackStr :: LispVal -> ThrowsException String
+unpackStr :: Unpacker String
 unpackStr (String s) = return s
 unpackStr val        = throwError $ TypeMismatch "string" val
 
-unpackBool :: LispVal -> ThrowsException Bool
+unpackBool :: Unpacker Bool
 unpackBool (Bool b) = return b
 unpackBool val      = throwError $ TypeMismatch "boolean" val
 
-unpackArity :: Maybe LispVal -> IOThrowsException (Maybe String)
-unpackArity Nothing      = return Nothing
-unpackArity (Just arity) = Just <$> unpackId arity
-
-unpackId :: LispVal -> IOThrowsException String
+unpackId :: Unpacker String
 unpackId (Atom (Left str)) = if isLeft $ parse lispIdentifier str
   then throwError $ InvalidIdentifier str
   else return str
 unpackId (Atom (Right k))  = throwError $ VarNameReserved $ show k
 unpackId invalid           = throwError $ InvalidIdentifier $ show invalid
 
-unpackIds :: [LispVal] -> IOThrowsException [String]
-unpackIds = traverse unpackId
+ioUnpackId :: IOUnpacker String
+ioUnpackId = liftThrow . unpackId
 
 -- ---------------------------------------------------------------------------
 -- Helpers
 
 flatten :: LispVal -> LispVal
-flatten (Pair h (List t)) =
-  List (map flatten h ++ map flatten t)
-flatten (Pair h t@(Pair h2 t2)) = case flatten t of
-  List t     -> List (map flatten h ++ t)
-  Pair h2 t2 -> Pair (map flatten h ++ h2) t2
-  t          -> Pair (map flatten h) t
+flatten (Pair h (  List t  )) = List (map flatten h ++ map flatten t)
+flatten (Pair h t@(Pair _ _)) = case flatten t of
+  List l     -> List (map flatten h ++ l)
+  Pair h' t' -> Pair (map flatten h ++ h') t'
+  val        -> Pair (map flatten h) val
 flatten a = a
 
 makeProc ::
@@ -190,17 +213,16 @@ makeProc ::
 makeProc scope (params, arity) body = case NE.nonEmpty body of
   Nothing    -> throwError EmptyBody
   Just body' -> do
-    paramsT <- bind2 ensureUnique (unpackIds params) (unpackArity arity)
-    return $ Proc $ ProcBody scope paramsT body'
+    ps <- traverse ioUnpackId params
+    a  <- mapM ioUnpackId arity
+    ensureUnique $ maybe ps (: ps) a
+    return $ Proc $ ProcBody scope (ps, a) body'
 
-ensureUnique ::
-  [String]
-  -> Maybe String
-  -> IOThrowsException ([String], Maybe String)
-ensureUnique params arity =
-  case dup $ maybe params (: params) arity of
+ensureUnique :: [String] -> IOThrowsException ()
+ensureUnique as =
+  case dup as of
     Just arg -> throwError (NonUniqueBinding arg)
-    Nothing  -> return (params, arity)
+    Nothing  -> return ()
 
 unOp ::
   (a -> b)

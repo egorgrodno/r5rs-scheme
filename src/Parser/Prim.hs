@@ -23,6 +23,7 @@ import           Control.Monad                  ( MonadPlus(..)
 import           Data.Bifunctor                 ( second )
 import           Data.Either                    ( isLeft )
 import           Parser.Except                  ( ParseException(..) )
+import           Prelude
 
 newtype Parser a =
   P (Input -> ParseResult a)
@@ -50,7 +51,6 @@ instance Applicative Parser where
 
 instance Monad Parser where
   (>>=) = parserBind
-  return = returnParser
 
 instance Alternative Parser where
   empty = mzero

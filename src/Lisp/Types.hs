@@ -1,3 +1,5 @@
+{-# LANGUAGE DerivingStrategies #-}
+
 module Lisp.Types
   ( IOThrowsException
   , Keyword(..)
@@ -21,6 +23,7 @@ import           Control.Monad.Except           ( ExceptT
 import           Data.Fixed                     ( mod' )
 import           Data.IORef                     ( IORef )
 import           Data.List.NonEmpty             ( NonEmpty )
+import           Prelude
 import           Util
 
 type ThrowsException =
@@ -52,6 +55,7 @@ data Keyword =
   | KQuote
   | KDefine
   | KLambda
+  | KLet
   | KSet
   | KEq
   | KPlus
@@ -70,7 +74,7 @@ data Keyword =
   | KStrGT
   | KStrLTE
   | KStrGTE
-  deriving (Bounded, Enum)
+  deriving stock (Bounded, Enum)
 
 instance Show Keyword where
   show = showKeyword
@@ -187,6 +191,7 @@ showKeyword KMod    = "modulo"
 showKeyword KQuot   = "quotient"
 showKeyword KRem    = "remainder"
 showKeyword KLambda = "lambda"
+showKeyword KLet    = "let"
 showKeyword KLT     = "<"
 showKeyword KGT     = ">"
 showKeyword KLTE    = "<="
@@ -212,7 +217,7 @@ showVal (Bool      False) = "#f"
 showVal (List      as   ) = "(" ++ showListVals as ++ ")"
 showVal (Pair h t       ) = "(" ++ showListVals h ++ " . " ++ showVal t ++ ")"
 showVal (PrimProc _     ) = "#<primitive-procedure>"
-showVal (Proc (ProcBody _ (args, arity) body)) =
+showVal (Proc (ProcBody _ (args, arity) _)) =
   let argsStr = unwords args ++ maybe "" (" . " ++) arity
    in "(lambda (" ++ argsStr ++ ") ...)"
 

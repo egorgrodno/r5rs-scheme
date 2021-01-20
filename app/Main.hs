@@ -25,6 +25,7 @@ import           Parser                         ( eof
                                                 , sepBy1
                                                 , spaces1
                                                 )
+import           Prelude
 import           System.Environment             ( getArgs )
 import           System.Exit                    ( ExitCode(..)
                                                 , exitSuccess
@@ -34,7 +35,6 @@ import           System.IO                      ( hFlush
                                                 , stdout
                                                 )
 import           System.IO.Error                ( catchIOError
-                                                , ioError
                                                 , isEOFError
                                                 )
 import qualified Paths_r5rs_scheme             as P

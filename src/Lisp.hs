@@ -15,7 +15,7 @@ import           Lisp.Eval
 import           Lisp.Parser
 import           Lisp.Scope
 import           Lisp.Types
-import           Util
+import           Prelude
 
 baseScope :: IO (IORef Scope)
 baseScope = do
